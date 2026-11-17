@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A hockey stick and a puck, kept inside the adaptive icon's 66dp safe circle. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="1.08"
+        android:scaleY="1.08"
+        android:translateX="3.2"
+        android:translateY="3.2">
+    <!-- Stick: shaft down to the heel, then the blade along the ice. -->
+    <path
+        android:strokeColor="#E8C48A"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M69,30 L48,65 Q45.5,70 40,70 L31,70" />
+    <!-- Tape on the knob and on the blade. -->
+    <path
+        android:strokeColor="#1A1A1A"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M69,30 L66.5,34.2" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="7"
+        android:strokeLineCap="butt"
+        android:fillColor="#00000000"
+        android:pathData="M42.5,70 L34,70" />
+    <!-- Puck: a short black cylinder with a white rim so it reads on the dark ice. -->
+    <path
+        android:fillColor="#111111"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"
+        android:pathData="M55,66 L55,70.5 A9,3.6 0 0,0 73,70.5 L73,66 A9,3.6 0 0,0 55,66 Z" />
+    <path
+        android:fillColor="#2E2E2E"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"
+        android:pathData="M55,66 A9,3.6 0 1,0 73,66 A9,3.6 0 1,0 55,66 Z" />
+    </group>
+</vector>
