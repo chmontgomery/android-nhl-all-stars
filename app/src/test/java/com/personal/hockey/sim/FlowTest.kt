@@ -411,7 +411,7 @@ class FlowTest {
         val sim = game(away = catcher)
         for ((i, s) in sim.skaters.withIndex()) { s.x = -10f + 2f * i; s.y = -11f; s.vx = 0f; s.vy = 0f }
         sim.startPlayForTest()
-        sim.clockS = 0.5f
+        sim.clockS = 1f   // time for the catch: the goalie backs in as the puck comes, so meets it late
         sim.caught()
         sim.clockS = 0f   // ran out with the puck in the glove
         val events = sim.run(Tuning.WHISTLE_TIME)

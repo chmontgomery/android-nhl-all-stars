@@ -11,9 +11,9 @@ private const val PI_F = PI.toFloat()
 /** x of the goal line [g] defends. HOME defends -GOAL_X; "inward" (out of the net) is [Side.dir]. */
 private fun goalLineX(g: Goalie): Float = -g.side.dir * Rink.GOAL_X
 
-/** Back on the goal line's centre, empty-handed, remembering the puck as where it is now. */
+/** Straight out from his goal line at the challenging depth, empty-handed, remembering the puck as where it is now. */
 internal fun HockeySim.resetGoalie(g: Goalie) {
-    g.x = goalLineX(g) + g.side.dir * Tuning.GOALIE_DEPTH
+    g.x = goalLineX(g) + g.side.dir * Tuning.GOALIE_DEPTH_OUT
     g.y = 0f
     g.holding = false; g.beaten = false; g.carryBeaten = false
     g.seenX.fill(puck.x); g.seenY.fill(puck.y)
@@ -43,10 +43,8 @@ internal fun HockeySim.stepGoalies() {
 }
 
 /**
- * Records the puck and moves toward the point [Tuning.GOALIE_DEPTH] out from the goal line on the
- * line from the net centre to the puck as it was [GoalieSkill.reactionS] ago, at most
- * [GoalieSkill.speed] m/s, staying between the posts. With the puck behind the goal line it hugs
- * the near post.
+ * Records the puck and moves toward [goalieTarget] for the puck as it was [GoalieSkill.reactionS]
+ * ago, at most [GoalieSkill.speed] m/s along the straight line to it. Draws no random numbers.
  */
 private fun HockeySim.track(g: Goalie) {
     val n = g.seenX.size
@@ -54,13 +52,38 @@ private fun HockeySim.track(g: Goalie) {
     g.seenHead = (g.seenHead + 1) % n
     if (g.holding) return
     val sx = g.seenX[g.seenHead]; val sy = g.seenY[g.seenHead]   // the oldest entry
-    val lineX = goalLineX(g)
-    g.x = lineX + g.side.dir * Tuning.GOALIE_DEPTH
-    val ahead = (sx - lineX) * g.side.dir
-    val w = Rink.GOAL_HALF_W
-    val ty = (if (ahead > 1e-3f) sy * Tuning.GOALIE_DEPTH / ahead else if (sy < 0f) -w else w).coerceIn(-w, w)
+    goalieTarget(goalLineX(g), g.side.dir, sx, sy, g.target)
+    val dx = g.target[0] - g.x; val dy = g.target[1] - g.y
+    val d = sqrt(dx * dx + dy * dy)
     val maxStep = g.skill.speed * Tuning.DT
-    g.y += (ty - g.y).coerceIn(-maxStep, maxStep)
+    if (d <= maxStep) {
+        g.x = g.target[0]; g.y = g.target[1]
+    } else {
+        g.x += dx * maxStep / d; g.y += dy * maxStep / d
+    }
+}
+
+/**
+ * Where a goalie defending the goal line at [lineX], facing [dir] out of the net, wants to stand
+ * with the puck at ([puckX], [puckY]); writes (x, y) into [out]. In front of the goal line it is on
+ * the ray from the goal-line centre to the puck, at most [Tuning.GOALIE_MAX_ANGLE] from straight
+ * out, [Tuning.GOALIE_DEPTH_IN] out with the puck within [Tuning.GOALIE_CLOSE_R], easing linearly
+ * to [Tuning.GOALIE_DEPTH_OUT] at [Tuning.GOALIE_CHALLENGE_R]. With the puck on or behind the goal
+ * line, he seals the post on the puck's side.
+ */
+internal fun goalieTarget(lineX: Float, dir: Float, puckX: Float, puckY: Float, out: FloatArray) {
+    val ahead = (puckX - lineX) * dir
+    if (ahead <= 0f) {
+        out[0] = lineX + dir * Tuning.GOALIE_POST_OUT
+        out[1] = (if (puckY >= 0f) 1f else -1f) * (Rink.GOAL_HALF_W - Tuning.GOALIE_POST_IN)
+        return
+    }
+    val r = sqrt(ahead * ahead + puckY * puckY)
+    val k = ((r - Tuning.GOALIE_CLOSE_R) / (Tuning.GOALIE_CHALLENGE_R - Tuning.GOALIE_CLOSE_R)).coerceIn(0f, 1f)
+    val depth = Tuning.GOALIE_DEPTH_IN + (Tuning.GOALIE_DEPTH_OUT - Tuning.GOALIE_DEPTH_IN) * k
+    val a = atan2(puckY, ahead).coerceIn(-Tuning.GOALIE_MAX_ANGLE, Tuning.GOALIE_MAX_ANGLE)
+    out[0] = lineX + dir * depth * cos(a)
+    out[1] = depth * sin(a)
 }
 
 /**

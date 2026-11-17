@@ -80,4 +80,6 @@ class Goalie(val side: Side, val skill: GoalieSkill) {
     internal var beaten = false
     /** A carrier in reach beat the save roll; no new roll until the carried puck leaves reach. */
     internal var carryBeaten = false
+    /** Scratch for [goalieTarget], so tracking allocates nothing. */
+    internal val target = FloatArray(2)
 }

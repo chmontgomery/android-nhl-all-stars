@@ -6,6 +6,11 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.hypot
+import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlin.random.Random
 
 class GoalieTest {
@@ -50,15 +55,91 @@ class GoalieTest {
 
     private val away get() = Side.AWAY.index
 
+    private val target = FloatArray(2)
+
     @Test fun goalie_stays_between_puck_and_net() {
         val sim = sim()
         sim.loose(15f, 8f, 0f, 0f)
         sim.run(2f)
         val g = sim.goalies[away]
-        assertTrue("y ${g.y}", g.y > 0.3f)
-        assertEquals(25f, g.x, 0.01f)
-        // Line from net centre (26, 0) to the puck at 1 m out: y = 8 / 11.
-        assertEquals(8f / 11f, g.y, 0.05f)
+        goalieTarget(26f, -1f, 15f, 8f, target)
+        assertEquals(target[0], g.x, 0.05f)
+        assertEquals(target[1], g.y, 0.05f)
+    }
+
+    @Test fun goalie_challenges_a_far_puck_at_the_top_of_the_crease() {
+        goalieTarget(26f, -1f, 15f, 8f, target)
+        val r = sqrt(11f * 11f + 8f * 8f)
+        assertEquals(26f - 1.5f * 11f / r, target[0], 0.01f)
+        assertEquals(1.5f * 8f / r, target[1], 0.01f)
+    }
+
+    @Test fun goalie_backs_in_as_the_puck_closes() {
+        goalieTarget(26f, -1f, 24f, 0f, target)   // 2 m out: deep
+        assertEquals(25.4f, target[0], 0.01f); assertEquals(0f, target[1], 0.01f)
+        goalieTarget(26f, -1f, 21.5f, 0f, target) // 4.5 m: halfway between 3 and 6
+        assertEquals(26f - 1.05f, target[0], 0.01f)
+    }
+
+    @Test fun goalie_angle_is_clamped_near_the_goal_line() {
+        goalieTarget(26f, -1f, 25.5f, 8f, target)  // nearly along the goal line
+        val a = atan2(target[1], 26f - target[0])
+        assertEquals(Tuning.GOALIE_MAX_ANGLE, a, 0.01f)
+    }
+
+    @Test fun goalie_seals_the_near_post_with_the_puck_behind_the_net() {
+        goalieTarget(26f, -1f, 28f, -3f, target)
+        assertEquals(26f - 0.35f, target[0], 0.01f)
+        assertEquals(-(Rink.GOAL_HALF_W - 0.25f), target[1], 0.01f)
+    }
+
+    @Test fun goalie_never_enters_the_net_as_the_puck_goes_round_behind_it() {
+        val sim = sim()
+        val g = sim.goalies[away]
+        var ticks = 0
+        sim.run(3f) { t ->
+            if (t > 0) { assertTrue("tick $t goalie x ${g.x}", 26f - g.x >= 0.3f); ticks++ }
+            val a = t * 0.05f
+            sim.loose(26f + 2.5f * cos(a), 2.5f * sin(a) * 2f, 0f, 0f)
+        }
+        assertTrue(26f - g.x >= 0.3f)
+        assertEquals(179, ticks)
+    }
+
+    @Test fun goalie_move_is_capped_at_his_speed_in_x_and_y() {
+        val skill = GoalieSkill(0f, 6f, 0.7f)   // no reaction delay: he goes for the new spot at once
+        val sim = sim(skill)
+        val g = sim.goalies[away]
+        assertEquals(26f - Tuning.GOALIE_DEPTH_OUT, g.x, 1e-4f); assertEquals(0f, g.y, 1e-4f)
+        sim.loose(Rink.GOAL_X + 3f, -11f, 0f, 0f)   // the far corner, behind his goal line
+        val x0 = g.x; val y0 = g.y
+        sim.step()
+        val moved = hypot(g.x - x0, g.y - y0)
+        assertTrue("moved $moved", moved <= skill.speed * Tuning.DT + 1e-4f)
+        assertTrue("moved $moved", moved >= skill.speed * Tuning.DT * 0.99f)
+        assertTrue("dx ${g.x - x0} dy ${g.y - y0}", g.x > x0 && g.y < y0)   // toward the near post, in x and y
+    }
+
+    @Test fun tracking_draws_no_random_numbers() {
+        var draws = 0
+        val counting = object : Random() {
+            val inner = Random(1)
+            override fun nextBits(bitCount: Int): Int { draws++; return inner.nextBits(bitCount) }
+        }
+        val sim = HockeySim(counting, standard, standard)
+        for ((i, s) in sim.skaters.withIndex()) { s.x = -10f + 2f * i; s.y = -11f; s.vx = 0f; s.vy = 0f }
+        sim.startPlayForTest()
+        val g = sim.goalies[away]
+        val x0 = g.x; val y0 = g.y
+        // The puck circles in the AWAY zone, well away from the goalie, for 2 s: he tracks it, never saves.
+        repeat(Math.round(2f / Tuning.DT)) { t ->
+            val a = t * 0.05f
+            sim.loose(15f + 4f * cos(a), 4f * sin(a), 0f, 0f)
+            draws = 0
+            sim.step()
+            assertEquals("tick $t", 0, draws)
+        }
+        assertTrue("he never moved", hypot(g.x - x0, g.y - y0) > 0.1f)
     }
 
     @Test fun perfect_goalie_stops_centre_shots() {

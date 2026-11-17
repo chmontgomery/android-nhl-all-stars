@@ -71,7 +71,15 @@ object Tuning {
     const val CELEBRATE_GAP = 1.2f     // m from the scorer at which they stop pressing in
 
     // Goalies
-    const val GOALIE_REACH = 0.75f; const val GOALIE_DEPTH = 1.0f   // stands this far out from the goal line
+    const val GOALIE_REACH = 0.75f
+    // He stands on an arc: on the ray from the goal-line centre to the puck he sees, this far out.
+    const val GOALIE_DEPTH_OUT = 1.5f    // m out when challenging, near the top of the crease
+    const val GOALIE_DEPTH_IN = 0.6f     // m out with the puck close, deep in the crease
+    const val GOALIE_CHALLENGE_R = 6f    // puck at least this far from the goal-line centre: full depth
+    const val GOALIE_CLOSE_R = 3f        // puck within this: deep; depth eases linearly in between
+    const val GOALIE_MAX_ANGLE = 1.22f   // rad (70°) either side of straight out
+    const val GOALIE_POST_OUT = 0.35f    // m out from the goal line when sealing a post
+    const val GOALIE_POST_IN = 0.25f     // m in from the post when sealing it
     const val GOALIE_BODY_R = 0.8f     // skaters are kept this far from a goalie's centre
     const val COVER_SPEED = 25f        // a saved puck slower than this is always caught; faster rolls an outcome
     const val STRIP_SPEED = 20f        // a stripped puck's kick or rebound leaves as if saved at this speed
