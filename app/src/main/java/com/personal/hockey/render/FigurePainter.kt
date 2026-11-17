@@ -180,13 +180,15 @@ class FigurePainter(private val sink: TriangleSink = TriangleSinks.default()) {
     }
 
     /**
-     * Poses [g] in its ready or save pose and lays [anim]'s clip over that, without drawing; what
-     * [drawGoalie] does first. A goalie clip keys the hands and the stick's ends; the stick's middle
-     * and the elbows are put back between them after blending.
+     * Poses [g] in its ready or save pose, with its shuffle or T-push over that, and lays [anim]'s
+     * clip on top, without drawing; what [drawGoalie] does first. A goalie clip (the butterfly) keys
+     * the legs, the hands and the stick's ends, so it overrides the movement; the stick's middle and
+     * the elbows are put back between them after blending.
      */
     fun poseGoalie(camera: Camera, g: Goalie, anim: AnimState) {
         begin(camera, g.x, g.y, anim.facing)
         poseGoalie(armsOut = g.saveFlash < SAVE_FLASH_S)
+        goalieMoves(anim)
         blendPose(anim, pose, pose)
         if (anim.weight > 0f && ClipLibrary[anim.clip] != null) {
             lerpSlot(STICK_MID, STICK_TOP, BLADE_HEEL, GOALIE_STICK_MID)
@@ -601,38 +603,102 @@ class FigurePainter(private val sink: TriangleSink = TriangleSinks.default()) {
         elbows()
     }
 
-    /** Squatting goalie facing out of the net; gloves wide, or flung out just after a save. */
+    /**
+     * The goalie's ready stance, facing the puck: standing with the hips at [GOALIE_HIP_Z], knees
+     * bent over the skates, a slight forward lean and the pads close together; the glove (left hand)
+     * up and open, the blocker (right) holding the stick with its blade on the ice in front. Just
+     * after a save the gloves are flung out instead ([armsOut]).
+     */
     private fun poseGoalie(armsOut: Boolean) {
+        val hz = GOALIE_HIP_Z
         for (side in 0..1) {
             val sigma = if (side == 0) 1f else -1f
             val hip = if (side == 0) HIP_L else HIP_R
-            set(hip, 0f, sigma * 0.16f, 0.62f)
-            set(hip + 1, 0.22f, sigma * 0.22f, 0.36f)
-            set(hip + 2, 0.08f, sigma * 0.44f, 0.12f)
-            set(hip + 3, -0.05f, sigma * 0.44f, 0.05f)
-            set(hip + 4, 0.2f, sigma * 0.44f, 0.04f)
-            set(if (side == 0) SH_L else SH_R, 0.2f, sigma * 0.25f, 1.08f)
+            set(hip, 0f, sigma * 0.16f, hz)
+            set(hip + 1, 0.2f, sigma * 0.15f, 0.45f)
+            set(hip + 2, 0.04f, sigma * 0.27f, 0.13f)
+            set(hip + 3, -0.08f, sigma * 0.27f, 0.06f)
+            set(hip + 4, 0.17f, sigma * 0.29f, 0.04f)
+            set(if (side == 0) SH_L else SH_R, 0.18f, sigma * 0.25f, hz + 0.43f)
         }
-        set(HIP_C, 0f, 0f, 0.62f)
-        set(SH_C, 0.2f, 0f, 1.1f)
-        set(HEAD, 0.25f, 0f, 1.38f)
+        set(HIP_C, 0f, 0f, hz)
+        set(SH_C, 0.18f, 0f, hz + 0.45f)
+        set(HEAD, 0.24f, 0f, hz + 0.72f)
         set(HEAD_FWD, la[HEAD] + 1f, lb[HEAD], lz[HEAD])
-        // Glove on the left hand, blocker and stick in the right.
         if (armsOut) {
-            set(HAND_L, 0.25f, 0.88f, 1.3f)
-            set(HAND_R, 0.28f, -0.82f, 1.02f)
-            set(BLADE_HEEL, 0.5f, -0.6f, 0.02f)
-            set(BLADE_TOE, 0.5f, -0.22f, 0.02f)
+            set(HAND_L, 0.25f, 0.85f, hz + 0.62f)
+            set(HAND_R, 0.3f, -0.72f, hz + 0.2f)
+            set(BLADE_HEEL, 0.5f, -0.62f, 0.02f)
+            set(BLADE_TOE, 0.5f, -0.24f, 0.02f)
         } else {
-            set(HAND_L, 0.42f, 0.46f, 0.78f)
-            set(HAND_R, 0.44f, -0.42f, 0.6f)
-            set(BLADE_HEEL, 0.62f, -0.18f, 0.02f)
-            set(BLADE_TOE, 0.62f, 0.3f, 0.02f)
+            set(HAND_L, 0.4f, 0.44f, hz + 0.2f)
+            set(HAND_R, 0.42f, -0.36f, hz - 0.06f)
+            set(BLADE_HEEL, 0.55f, -0.12f, 0.02f)
+            set(BLADE_TOE, 0.55f, 0.34f, 0.02f)
         }
         set(STICK_TOP, la[HAND_R], lb[HAND_R], lz[HAND_R] + 0.12f)
+    }
+
+    /**
+     * Lays the goalie's drawn movement over his ready stance by [AnimState.shuffleW] and
+     * [AnimState.pushW], scaled by how much of the move is sideways to him, then puts the stick's
+     * middle and the elbows between the hands and the stick's ends.
+     *
+     * Shuffle: small quick steps, pads square. Through each step cycle the lead foot (on the side he
+     * moves to) lifts and steps out while the trail foot drifts in under him, then the lead plants
+     * while the trail foot lifts and closes up. T-push: the hips drop a little and shift toward the
+     * move; the lead leg turns its skate toward the move under him while the trail leg pushes,
+     * extended out the other way.
+     */
+    private fun goalieMoves(anim: AnimState) {
+        val speed = sqrt(anim.moveX * anim.moveX + anim.moveY * anim.moveY)
+        // Signed share of the move to his left (+) or right (-); scaling by it keeps the layers smooth
+        // as a move swings through straight ahead or back, where the lead side flips.
+        val lat = if (speed > 1e-3f) (-anim.moveX * fy + anim.moveY * fx) / speed else 0f
+        val toward = if (lat >= 0f) 1f else -1f
+        val sw = anim.shuffleW * abs(lat)
+        val pw = anim.pushW * abs(lat)
+        if (sw > 0f) {
+            val c = cos(anim.stepPhase); val sn = sin(anim.stepPhase)
+            for (side in 0..1) {
+                val sigma = if (side == 0) 1f else -1f
+                val hip = if (side == 0) HIP_L else HIP_R
+                val lead = sigma == toward
+                val db = toward * GOALIE_SHUFFLE_STEP * (if (lead) -c else c) * sw
+                val dz = GOALIE_SHUFFLE_LIFT * max(0f, if (lead) sn else -sn) * sw
+                shift(hip + 1, db * 0.5f, dz * 0.5f)
+                for (j in 2..4) shift(hip + j, db, dz)
+            }
+        }
+        if (pw > 0f) {
+            val hb = toward * GOALIE_PUSH_SHIFT * pw
+            val hd = -GOALIE_PUSH_DROP * pw
+            for (i in UPPER_GOALIE) shift(i, hb, hd)
+            for (side in 0..1) {
+                val sigma = if (side == 0) 1f else -1f
+                val hip = if (side == 0) HIP_L else HIP_R
+                shift(hip, hb, hd)
+                if (sigma == toward) {
+                    pushSlot(hip + 1, pw, 0.22f, toward * 0.26f, 0.42f)
+                    pushSlot(hip + 2, pw, 0.06f, toward * 0.32f, 0.13f)
+                    pushSlot(hip + 3, pw, 0.02f, toward * 0.22f, 0.06f)
+                    pushSlot(hip + 4, pw, 0.12f, toward * 0.47f, 0.04f)
+                } else {
+                    pushSlot(hip + 1, pw, 0.06f, -toward * 0.44f, 0.44f)
+                    pushSlot(hip + 2, pw, 0f, -toward * 0.76f, 0.13f)
+                    pushSlot(hip + 3, pw, -0.1f, -toward * 0.78f, 0.06f)
+                    pushSlot(hip + 4, pw, 0.14f, -toward * 0.78f, 0.04f)
+                }
+            }
+        }
         lerpSlot(STICK_MID, STICK_TOP, BLADE_HEEL, GOALIE_STICK_MID)
         elbows()
     }
+
+    private fun shift(i: Int, db: Float, dz: Float) { lb[i] += db; lz[i] += dz }
+
+    private fun pushSlot(i: Int, w: Float, a: Float, b: Float, z: Float) =
+        set(i, mix(la[i], a, w), mix(lb[i], b, w), mix(lz[i], z, w))
 
     // ---- drawing parts ------------------------------------------------------------------------
 
@@ -808,6 +874,14 @@ class FigurePainter(private val sink: TriangleSink = TriangleSinks.default()) {
         const val SAVE_FLASH_S = 0.3f
         /** Where a goalie's stick middle sits, from the top (0) to the blade's heel (1). */
         const val GOALIE_STICK_MID = 0.55f
+        /** A goalie's hips in his ready stance, metres up. */
+        const val GOALIE_HIP_Z = 0.78f
+        /** A shuffling goalie's feet: how far each swings either side of its stance, and how high a stepping foot lifts, metres. */
+        const val GOALIE_SHUFFLE_STEP = 0.08f; const val GOALIE_SHUFFLE_LIFT = 0.04f
+        /** A T-pushing goalie's hips: how far they shift toward the move, and drop, metres. */
+        const val GOALIE_PUSH_SHIFT = 0.06f; const val GOALIE_PUSH_DROP = 0.06f
+        /** The slots a T-push shifts and drops with the hips: the upper body, the hands and the stick's top. */
+        val UPPER_GOALIE = intArrayOf(HIP_C, SH_C, SH_L, SH_R, HEAD, HEAD_FWD, HAND_L, HAND_R, STICK_TOP)
 
         /** Pants top above, and bottom below, the hip centre along the torso, metres. */
         const val PANTS_UP = 0.1f; const val PANTS_DOWN = 0.16f

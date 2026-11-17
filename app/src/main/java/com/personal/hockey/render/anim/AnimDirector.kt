@@ -68,6 +68,18 @@ const val GOALIE_TURN_RATE = 6f
 const val GOALIE_FACE_MAX = 1.92f
 /** A puck this close to a goalie, metres, gives no direction: he faces straight out. */
 private const val GOALIE_FACE_DEAD_M = 0.05f
+/** A goalie moving faster than this, m/s, T-pushes; slower, he shuffles. */
+const val GOALIE_SHUFFLE_SPEED = 2.5f
+/** m/s each side of [GOALIE_SHUFFLE_SPEED]: the T-push starts above it plus this and ends below it minus this. */
+const val GOALIE_SPEED_HYST = 0.4f
+/** Seconds a goalie's shuffle or T-push takes to ease fully in or out; also how fast his drawn speed follows his moves. */
+const val GOALIE_MOVE_BLEND_S = 0.12f
+/** A goalie moved further than this in one tick, metres, was put there (a faceoff or goal reset): no movement. */
+const val GOALIE_JUMP_M = 0.5f
+/** Below this drawn speed, m/s, a goalie is at rest in his ready stance. */
+const val GOALIE_STILL_SPEED = 0.3f
+/** Metres a shuffling goalie covers per step cycle (lead foot out, trail foot in). */
+const val GOALIE_STEP_M = 0.32f
 /** Seconds the scorer glides on after the goal before celebrating. */
 const val CHEER_GLIDE_S = 0.6f
 /** A hugger this close to the scorer, metres, joins the hug. */
@@ -118,6 +130,15 @@ class AnimState {
     var turnRate = 0f
     /** Goalies only: the drawn facing in radians, rink frame; follows the puck within [GOALIE_FACE_MAX] of straight out. */
     var facing = 0f
+    /** Goalies only: drawn velocity, m/s, rink frame; his position change per tick, smoothed over [GOALIE_MOVE_BLEND_S]. */
+    var moveX = 0f
+    var moveY = 0f
+    /** Goalies only: how far into the shuffle, 0..1; eased in [GOALIE_MOVE_BLEND_S]. */
+    var shuffleW = 0f
+    /** Goalies only: how far into the T-push, 0..1; eased in [GOALIE_MOVE_BLEND_S]. */
+    var pushW = 0f
+    /** Goalies only: radians through the shuffle's step cycle; advances with his drawn speed. */
+    var stepPhase = 0f
     /** How far into the hockey-stop pose, 0..1; eased each tick in [STOP_BLEND_S]. */
     var stopW = 0f
     /**
@@ -140,6 +161,11 @@ class AnimState {
     /** Easing the clip out (it ended, or [Clip.NONE] was played over it). */
     internal var fading = false
     internal var lastFacing = 0f
+    /** Goalies only: the position last tick, metres. */
+    internal var lastX = 0f
+    internal var lastY = 0f
+    /** Goalies only: T-pushing rather than shuffling; switched with [GOALIE_SPEED_HYST] either side of [GOALIE_SHUFFLE_SPEED]. */
+    internal var pushing = false
 
     private companion object {
         const val NEVER = 99f
@@ -203,6 +229,7 @@ class AnimDirector(private val effects: Effects? = null) {
             if (s.act == Act.DOWN) play(st, Clip.NONE)   // no follow-through on someone lying on the ice
         }
         faceGoalies(sim)
+        moveGoalies(sim)
         primed = true
         celebrate(sim)
         val events = sim.events
@@ -265,6 +292,38 @@ class AnimDirector(private val effects: Effects? = null) {
             val cur = wrap(st.facing - straight)
             val step = GOALIE_TURN_RATE * Tuning.DT
             st.facing = straight + cur + (desired - cur).coerceIn(-step, step)
+        }
+    }
+
+    /**
+     * Tracks how each goalie moves, for his drawn shuffle and T-push: his position change this tick,
+     * smoothed over [GOALIE_MOVE_BLEND_S] into [AnimState.moveX]/[AnimState.moveY]. A jump of more than
+     * [GOALIE_JUMP_M] is the sim putting him somewhere (a faceoff or goal reset), so it stops him
+     * instead. The T-push switches on and off with [GOALIE_SPEED_HYST] either side of
+     * [GOALIE_SHUFFLE_SPEED], so a speed near it does not flicker; the shuffle covers moving speeds
+     * below it, and both ease out below [GOALIE_STILL_SPEED].
+     */
+    private fun moveGoalies(sim: HockeySim) {
+        val k = Tuning.DT / GOALIE_MOVE_BLEND_S
+        for (i in goalies.indices) {
+            val g = sim.goalies[i]
+            val st = goalies[i]
+            val dx = g.x - st.lastX; val dy = g.y - st.lastY
+            st.lastX = g.x; st.lastY = g.y
+            if (!primed || dx * dx + dy * dy > GOALIE_JUMP_M * GOALIE_JUMP_M) {
+                st.moveX = 0f; st.moveY = 0f
+            } else {
+                st.moveX += (dx / Tuning.DT - st.moveX) * k
+                st.moveY += (dy / Tuning.DT - st.moveY) * k
+            }
+            val speed = sqrt(st.moveX * st.moveX + st.moveY * st.moveY)
+            if (speed > GOALIE_SHUFFLE_SPEED + GOALIE_SPEED_HYST) st.pushing = true
+            else if (speed < GOALIE_SHUFFLE_SPEED - GOALIE_SPEED_HYST) st.pushing = false
+            val moving = speed >= GOALIE_STILL_SPEED
+            st.pushW = if (moving && st.pushing) min(1f, st.pushW + k) else max(0f, st.pushW - k)
+            st.shuffleW = if (moving && !st.pushing) min(1f, st.shuffleW + k) else max(0f, st.shuffleW - k)
+            st.stepPhase += TWO_PI * speed * Tuning.DT / GOALIE_STEP_M
+            if (st.stepPhase > TWO_PI) st.stepPhase -= TWO_PI
         }
     }
 
