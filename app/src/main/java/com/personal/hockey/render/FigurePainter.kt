@@ -185,7 +185,7 @@ class FigurePainter(private val sink: TriangleSink = TriangleSinks.default()) {
      * and the elbows are put back between them after blending.
      */
     fun poseGoalie(camera: Camera, g: Goalie, anim: AnimState) {
-        begin(camera, g.x, g.y, if (g.side.dir > 0f) 0f else PI.toFloat())
+        begin(camera, g.x, g.y, anim.facing)
         poseGoalie(armsOut = g.saveFlash < SAVE_FLASH_S)
         blendPose(anim, pose, pose)
         if (anim.weight > 0f && ClipLibrary[anim.clip] != null) {

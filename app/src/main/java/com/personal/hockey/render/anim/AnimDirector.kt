@@ -12,7 +12,9 @@ import com.personal.hockey.sim.SimEvent
 import com.personal.hockey.sim.Skater
 import com.personal.hockey.sim.Tuning
 import com.personal.hockey.sim.wrap
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
@@ -60,6 +62,12 @@ const val STOP_SPRAY_COUNT = 3
 const val STOP_SPRAY_SPEED = 5f
 /** A facing change faster than this (rad/s) is the sim placing a skater, not turning: no turn rate. */
 const val TURN_RATE_JUMP = 25f
+/** How fast a goalie turns to follow the puck, rad/s. */
+const val GOALIE_TURN_RATE = 6f
+/** The furthest a goalie turns from straight out, rad (110 degrees). */
+const val GOALIE_FACE_MAX = 1.92f
+/** A puck this close to a goalie, metres, gives no direction: he faces straight out. */
+private const val GOALIE_FACE_DEAD_M = 0.05f
 /** Seconds the scorer glides on after the goal before celebrating. */
 const val CHEER_GLIDE_S = 0.6f
 /** A hugger this close to the scorer, metres, joins the hug. */
@@ -108,6 +116,8 @@ class AnimState {
     var cheer = Clip.NONE
     /** Radians per second of facing change over the last tick, positive to the left. */
     var turnRate = 0f
+    /** Goalies only: the drawn facing in radians, rink frame; follows the puck within [GOALIE_FACE_MAX] of straight out. */
+    var facing = 0f
     /** How far into the hockey-stop pose, 0..1; eased each tick in [STOP_BLEND_S]. */
     var stopW = 0f
     /**
@@ -192,6 +202,7 @@ class AnimDirector(private val effects: Effects? = null) {
             st.dekeW = if (s.act == Act.DEKE) min(1f, st.dekeW + bw) else max(0f, st.dekeW - bw)
             if (s.act == Act.DOWN) play(st, Clip.NONE)   // no follow-through on someone lying on the ice
         }
+        faceGoalies(sim)
         primed = true
         celebrate(sim)
         val events = sim.events
@@ -234,6 +245,27 @@ class AnimDirector(private val effects: Effects? = null) {
         if (sim.phase != Phase.PLAY && !sim.phase.afterGoal) flight.clear()
         flight.onTick(sim)
         butterflies(sim)
+    }
+
+    /**
+     * Turns each goalie's drawn facing toward the puck at [GOALIE_TURN_RATE]. The offset from straight
+     * out is what eases (and is clamped), so he never turns through his back. Straight out while he
+     * holds the puck, out of live play, or with the puck on top of him.
+     */
+    private fun faceGoalies(sim: HockeySim) {
+        val puck = sim.puck
+        for (i in goalies.indices) {
+            val g = sim.goalies[i]
+            val st = goalies[i]
+            val straight = if (g.side.dir > 0f) 0f else PI.toFloat()
+            if (!primed) st.facing = straight
+            val dx = puck.x - g.x; val dy = puck.y - g.y
+            val desired = if (g.holding || sim.phase != Phase.PLAY || dx * dx + dy * dy < GOALIE_FACE_DEAD_M * GOALIE_FACE_DEAD_M) 0f
+                else wrap(atan2(dy, dx) - straight).coerceIn(-GOALIE_FACE_MAX, GOALIE_FACE_MAX)
+            val cur = wrap(st.facing - straight)
+            val step = GOALIE_TURN_RATE * Tuning.DT
+            st.facing = straight + cur + (desired - cur).coerceIn(-step, step)
+        }
     }
 
     /** Drops goalie [i] (by side index) into the butterfly for a shot at his net, or keeps him there for another. */
