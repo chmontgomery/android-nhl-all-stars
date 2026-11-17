@@ -19,7 +19,7 @@ the NHL Players' Association or any team. NHL and the team names are trademarks 
   effects and vibration. Skaters and goalies are low-poly 3D figures built in code, with jersey numbers on
   their backs. Skaters glide, with stickhandling, wrist shots, slapshots, crossovers and hockey stops, and
   shots fly: the puck lifts off the ice over a shadow. Goalies square up to the puck, come out to cut
-  the angle, seal the post, shuffle and T-push, and drop into the butterfly on shots and can freeze a
+  the angle, seal the post, shuffle and T-push, drop into the butterfly on shots, and can freeze a
   save; the whistle goes and play restarts with a faceoff at the nearest zone dot, where the centres'
   faceoff skill rises from Easy to Medium to Hard. The skater you control has a green ring, other puck
   carriers a yellow one. Goals get a banner naming the scorer and a celebration: the scorer celebrates

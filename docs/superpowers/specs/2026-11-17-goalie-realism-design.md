@@ -34,7 +34,7 @@ Each tick, the goalie's target is a point on an arc in front of his net. It sits
 - **Challenging:** stale puck at least `GOALIE_CHALLENGE_R` (about 6 m) from the goal-line centre. Depth `GOALIE_DEPTH_OUT` is about 1.5 m, near the top of the 1.8 m crease.
 - **Close in:** stale puck within `GOALIE_CLOSE_R` (about 3 m). Depth `GOALIE_DEPTH_IN` is about 0.6 m, deep in the crease.
 - **In between:** depth eases linearly between those two.
-- **Angle limit:** the ray's angle from straight out is clamped to ±`GOALIE_MAX_ANGLE` (about 70°). A puck along the goal line doesn't pull him out sideways past the post.
+- **Angle limit:** the ray's angle from straight out is clamped to ±`GOALIE_MAX_ANGLE` (about 70°), so a puck along the goal line draws him toward that post rather than along the goal line. At full depth he can stand up to about 0.3 m outside the post's line while staying at least 0.2 m in front of the goal line.
 - **Post seal:** with the stale puck at or behind the goal line, the target is the near post: `(goalLineX + dir·GOALIE_POST_OUT, ±(GOAL_HALF_W − GOALIE_POST_IN))`. Use about 0.35 m out and 0.25 m in from the post.
 - **Movement:**
   - He moves toward the target at up to `GoalieSkill.speed` m/s. The cap now applies to his whole move in x and y, not just y.
@@ -50,7 +50,7 @@ Each tick, the goalie's target is a point on an arc in front of his net. It sits
 - **Facing:** each goalie's facing is the angle from him to the *live* puck.
   - It eases toward that angle at `GOALIE_TURN_RATE` (about 6 rad/s), so he turns rather than snapping.
   - It's clamped to ±`GOALIE_FACE_MAX` (about 110°) from straight out of his net. When he seals a post, he turns toward the corner.
-  - While he holds a caught puck, or during the goal pause and breaks, he eases back to straight out.
+  - While he holds a caught puck, in the goal pause, at breaks and at the final, he eases back to straight out. In every other phase, faceoffs included, he faces the puck.
 - **Where it lives:** the facing is per-goalie animation state, held in `AnimDirector` beside the skaters' state. It advances by frame time. The sim gets no facing field.
 - **Frame:** the whole figure, mesh and back number included, is posed in that frame.
 
