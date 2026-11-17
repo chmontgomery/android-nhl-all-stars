@@ -6,6 +6,7 @@ import com.personal.hockey.render.figure.Skeleton
 import com.personal.hockey.sim.Act
 import com.personal.hockey.sim.HockeySim
 import com.personal.hockey.sim.Phase
+import com.personal.hockey.sim.Rink
 import com.personal.hockey.sim.Position
 import com.personal.hockey.sim.Side
 import com.personal.hockey.sim.SimEvent
@@ -75,7 +76,7 @@ const val GOALIE_SPEED_HYST = 0.4f
 /** Seconds a goalie's shuffle or T-push takes to ease fully in or out; also how fast his drawn speed follows his moves. */
 const val GOALIE_MOVE_BLEND_S = 0.12f
 /** A goalie moved further than this in one tick, metres, was put there (a faceoff or goal reset): no movement. */
-const val GOALIE_JUMP_M = 0.5f
+const val GOALIE_JUMP_M = 0.2f
 /** Below this drawn speed, m/s, a goalie is at rest in his ready stance. */
 const val GOALIE_STILL_SPEED = 0.3f
 /** Metres a shuffling goalie covers per step cycle (lead foot out, trail foot in). */
@@ -182,7 +183,7 @@ class AnimDirector(private val effects: Effects? = null) {
     /** Index = skater id. */
     val skaters = Array(Side.entries.size * Position.entries.size) { i -> AnimState().apply { sweepPhase = i * SWEEP_PHASE_PER_ID } }
     /** Index = side.index. */
-    val goalies = Array(Side.entries.size) { AnimState() }
+    val goalies = Array(Side.entries.size) { i -> AnimState().apply { facing = if (Side.entries[i].dir > 0f) 0f else PI.toFloat() } }
     /** How high a shot is drawn above the ice; fed here, read by the renderer. */
     val flight = PuckFlight()
 
@@ -277,7 +278,8 @@ class AnimDirector(private val effects: Effects? = null) {
     /**
      * Turns each goalie's drawn facing toward the puck at [GOALIE_TURN_RATE]. The offset from straight
      * out is what eases (and is clamped), so he never turns through his back. Straight out while he
-     * holds the puck, out of live play, or with the puck on top of him.
+     * holds the puck, in the goal pause, at breaks and the final, or with the puck on top of him; he
+     * tracks it in every other phase, faceoffs included.
      */
     private fun faceGoalies(sim: HockeySim) {
         val puck = sim.puck
@@ -287,8 +289,16 @@ class AnimDirector(private val effects: Effects? = null) {
             val straight = if (g.side.dir > 0f) 0f else PI.toFloat()
             if (!primed) st.facing = straight
             val dx = puck.x - g.x; val dy = puck.y - g.y
-            val desired = if (g.holding || sim.phase != Phase.PLAY || dx * dx + dy * dy < GOALIE_FACE_DEAD_M * GOALIE_FACE_DEAD_M) 0f
-                else wrap(atan2(dy, dx) - straight).coerceIn(-GOALIE_FACE_MAX, GOALIE_FACE_MAX)
+            val desired = if (g.holding || sim.phase.afterGoal || sim.phase == Phase.BREAK || sim.phase == Phase.FINAL ||
+                dx * dx + dy * dy < GOALIE_FACE_DEAD_M * GOALIE_FACE_DEAD_M) 0f
+            else {
+                val raw = wrap(atan2(dy, dx) - straight)
+                // Puck on or behind his goal line: the way round is picked by which side of the net it is on,
+                // as the sim picks the post to seal, so a battle near the centre line cannot spin him.
+                val behind = puck.x * -g.side.dir >= Rink.GOAL_X
+                if (behind && abs(raw) > GOALIE_FACE_MAX) (if (puck.y >= 0f) g.side.dir else -g.side.dir) * GOALIE_FACE_MAX
+                else raw.coerceIn(-GOALIE_FACE_MAX, GOALIE_FACE_MAX)
+            }
             val cur = wrap(st.facing - straight)
             val step = GOALIE_TURN_RATE * Tuning.DT
             st.facing = straight + cur + (desired - cur).coerceIn(-step, step)
@@ -312,6 +322,7 @@ class AnimDirector(private val effects: Effects? = null) {
             st.lastX = g.x; st.lastY = g.y
             if (!primed || dx * dx + dy * dy > GOALIE_JUMP_M * GOALIE_JUMP_M) {
                 st.moveX = 0f; st.moveY = 0f
+                st.pushW = 0f; st.shuffleW = 0f; st.pushing = false
             } else {
                 st.moveX += (dx / Tuning.DT - st.moveX) * k
                 st.moveY += (dy / Tuning.DT - st.moveY) * k

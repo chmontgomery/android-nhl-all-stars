@@ -159,6 +159,18 @@ class GoalieStanceTest {
         assertEquals(0f, st.shuffleW, 0f)
     }
 
+    @Test fun a_small_teleport_mid_t_push_stops_the_push() {
+        repeat(40) { tick(vy = 6f) }   // well into a T-push
+        assertTrue(st.pushW > 0.5f)
+        g.y += 0.4f                    // a reset jump, but under the old 0.5 m threshold
+        tick(vy = 6f)
+        assertEquals(0f, st.pushW, 0f)
+        assertEquals(0f, st.shuffleW, 0f)
+        tick()
+        assertEquals(0f, st.pushW, 0f)
+        assertEquals(0f, st.shuffleW, 0f)
+    }
+
     @Test fun stance_allocates_nothing() {
         val threads = Class.forName("java.lang.management.ManagementFactory").getMethod("getThreadMXBean").invoke(null)
         val allocatedBytes = Class.forName("com.sun.management.ThreadMXBean")

@@ -106,6 +106,32 @@ class GoalieTest {
         assertEquals(179, ticks)
     }
 
+    @Test fun goalie_stays_off_the_goal_line_and_reaches_both_posts_on_a_tight_wraparound() {
+        val sim = sim()
+        val g = sim.goalies[away]
+        val post = Rink.GOAL_HALF_W - Tuning.GOALIE_POST_IN
+        var hiPost = false; var loPost = false
+        sim.run(6f) { t ->
+            if (t > 0) {
+                assertTrue("tick $t goalie x ${g.x}", 26f - g.x >= 0.2f)
+                if (26f - 0f > 0f && sim.puck.x > 26f) {
+                    if (abs(g.y - post) <= 0.01f) hiPost = true
+                    if (abs(g.y + post) <= 0.01f) loPost = true
+                }
+            }
+            val a = t * 0.04f
+            sim.loose(26f + 2f * cos(a), 2f * sin(a), 0f, 0f)
+        }
+        assertTrue("reached +post $hiPost, -post $loPost", hiPost && loPost)
+    }
+
+    @Test fun home_goalie_target_mirrors_the_away_one() {
+        goalieTarget(-26f, 1f, -15f, 8f, target)
+        val r = sqrt(11f * 11f + 8f * 8f)
+        assertEquals(-26f + 1.5f * 11f / r, target[0], 0.01f)
+        assertEquals(1.5f * 8f / r, target[1], 0.01f)
+    }
+
     @Test fun goalie_move_is_capped_at_his_speed_in_x_and_y() {
         val skill = GoalieSkill(0f, 6f, 0.7f)   // no reaction delay: he goes for the new spot at once
         val sim = sim(skill)
