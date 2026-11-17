@@ -333,6 +333,57 @@ class PreviewImagesTest {
         save("goalie-butterfly.png")
     }
 
+    /** The AWAY goalie's drawn state, with the camera pushed in (zoom goal 1.6) on him. */
+    private fun goalieShot(vm: GameViewModel, name: String) {
+        val g = vm.match.sim.goalies[Side.AWAY.index]
+        vm.renderer.camera.zoomGoal = 1.6f
+        vm.renderer.camera.snapTo(g.x - 2f, g.y)
+        showGame(vm, name)
+    }
+
+    /** Every skater but [except] stood far down ice, so nobody gets to the puck or into the shot. */
+    private fun park(vm: GameViewModel, except: Skater? = null) {
+        for (s in vm.match.sim.skaters) if (s !== except) { s.x = -24f; s.y = -12f + 2f * s.id; s.vx = 0f; s.vy = 0f }
+    }
+
+    /** A puck carrier at a sharp angle by the AWAY dot: the goalie is out on his arc, facing him. */
+    @Test fun goalie_angle() {
+        val (vm, me) = carryUpIce()
+        val sim = vm.match.sim
+        me.x = Rink.FACEOFF_X; me.y = -Rink.FACEOFF_Y; me.vx = 0f; me.vy = 0f
+        sim.giveTo(me)
+        repeat(90) { park(vm, me); me.vx = 0f; me.vy = 0f; tickWith(vm, null) }
+        goalieShot(vm, "goalie-angle.png")
+    }
+
+    /** The puck behind the AWAY net: the goalie seals the near post, facing the corner. */
+    @Test fun goalie_post() {
+        val (vm, _) = carryUpIce()
+        val sim = vm.match.sim
+        park(vm)
+        sim.puck.carrier = null; sim.puck.passTarget = null
+        sim.puck.x = Rink.GOAL_X + 2.5f; sim.puck.y = -3f; sim.puck.vx = 0f; sim.puck.vy = 0f
+        repeat(120) { park(vm); tickWith(vm, null) }
+        goalieShot(vm, "goalie-post.png")
+    }
+
+    /** A cross-crease pass: the puck jumps across the slot and the goalie T-pushes, captured mid-move. */
+    @Test fun goalie_t_push() {
+        val (vm, _) = carryUpIce()
+        val sim = vm.match.sim
+        val side = Side.AWAY.index
+        park(vm)
+        sim.puck.carrier = null; sim.puck.passTarget = null
+        sim.puck.x = Rink.GOAL_X - 5f; sim.puck.vx = 0f; sim.puck.vy = 0f
+        sim.puck.y = -5f
+        repeat(90) { park(vm); tickWith(vm, null) }
+        sim.puck.y = 5f
+        var n = 0
+        while (vm.renderer.anim.goalies[side].pushW <= 0.8f && n < 240) { park(vm); sim.puck.y = 5f; tickWith(vm, null); n++ }
+        assertTrue("pushW ${vm.renderer.anim.goalies[side].pushW} after $n ticks", vm.renderer.anim.goalies[side].pushW > 0.8f)
+        goalieShot(vm, "goalie-t-push.png")
+    }
+
     /** After a catch by the far goalie: both teams lined up on his zone's near-side dot, the camera there. */
     @Test fun zone_faceoff() {
         val vm = GameViewModel(MatchSetup.of(Teams.byId("MIN")!!, Teams.byId("COL")!!, Level.HARD), FeedbackDirector(Silent), seed = 3L)
